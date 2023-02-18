@@ -3,21 +3,23 @@ import os
 import pandas as pd
 import pytorch_lightning as pl
 from torch.utils.data import random_split, DataLoader, Dataset
+from typing import Optional
 
 
 class GlueDataset(Dataset):
  
     def __init__(self, filename: str, target_index: int, 
-                 s1_index: int , s2_index: int, test_index: int = None):
+                 s1_index: int , s2_index: int, test_index: int = None,
+                 header: Optional[int] = None):
         self.target_index = target_index
         self.s1_index = s1_index
         self.s2_index = s2_index
         self.test_index = test_index
 
-        df_glue = pd.read_csv(filename, sep='\t', header=None)
+        df_glue = pd.read_csv(filename, sep='\t', header=header)
         col_indexes = [col for col in [s1_index, s2_index, test_index] if col is not None]
-        self.y_train = df_glue[target_index].values
-        self.x_train = df_glue[col_indexes].values
+        self.y_train = df_glue.iloc[:, target_index].values
+        self.x_train = df_glue.iloc[:, col_indexes].values
  
     def __len__(self):
         return len(self.y_train)
@@ -55,36 +57,38 @@ class CoLADataModule(GlueBaseDataModule):
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test':
-            pass
-
-        if stage == 'predict':
-            pass
+            self.test = GlueDataset(filename=os.path.join(self.data_dir, 'test.tsv'),
+                                    target_index=0, s1_index=1, s2_index=None,
+                                    header=0)
 
     def train_dataloader(self):
-        return DataLoader(self.mnist_train, batch_size=32)
+        return DataLoader(self.train, batch_size=32)
 
     def val_dataloader(self):
-        return DataLoader(self.mnist_val, batch_size=32)
+        return DataLoader(self.val, batch_size=32)
 
     def test_dataloader(self):
-        return DataLoader(self.mnist_test, batch_size=32)
+        return DataLoader(self.test, batch_size=32)
 
-    def predict_dataloader(self):
-        return DataLoader(self.mnist_predict, batch_size=32)
-    
 
-dm = CoLADataModule()
-for stage in ['fit', 'validate']:
-    dm.setup(stage=stage)
 
-    if stage == 'fit':
-        dataset = dm.train
-    elif stage == 'validate':
-        dataset = dm.val
-    else:
-        assert False, stage
+if __name__ == "__main__":
+    data_modules = [CoLADataModule()]
 
-    print(stage)
-    for i, (x, y) in enumerate(dataset):
-        if i < 10:
-            print(f'i: x = {x}, y= {y}')
+    for dm in data_modules:
+        for stage in ['fit', 'validate', 'test']:
+            dm.setup(stage=stage)
+
+            if stage == 'fit':
+                dataset = dm.train
+            elif stage == 'validate':
+                dataset = dm.val
+            elif stage == 'test':
+                dataset = dm.test
+            else:
+                assert False, stage
+
+            print(stage)
+            for i, (x, y) in enumerate(dataset):
+                if i < 10:
+                    print(f'i: x = {x}, y = {y}')
