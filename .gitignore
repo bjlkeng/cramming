@@ -131,3 +131,7 @@ dmypy.json
 # Data files
 glue_data/*
 GLUE-baselines/*
+
+# Pytorch Lightning/Hydra outputs
+lightning_logs
+outputs
