@@ -1,2 +1,3 @@
 main:
-  task: dataloader_test
+  task: 
+    - dataloader_test
