@@ -1,3 +1,15 @@
-main:
-  task: 
-    - dataloader_test
+tasks: 
+    - baseline
+
+baseline:
+   tasks:
+      - CoLA
+
+   CoLA:
+      n_classes: 2
+      embedding_width: 768
+      datamodule: CoLADataModule 
+      data_dir: './glue_data/CoLA/'
+      loss_fn: binary_cross_entropy
+      metric: BinaryAccuracy
+      learning_rate: 1e-3

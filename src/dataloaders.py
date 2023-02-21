@@ -46,11 +46,13 @@ class GlueDataset(Dataset):
 
 
 class GlueBaseDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str, batch_size: int = 32, sentence_encoder=None):
+    def __init__(self, data_dir: str, batch_size: int = 32, sentence_encoder=None, 
+                 num_workers: int = 0):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.sentence_encoder = sentence_encoder
+        self.num_workers = num_workers
 
     def prepare_data(self):
         pass
@@ -59,13 +61,13 @@ class GlueBaseDataModule(pl.LightningDataModule):
         raise NotImplementedError()
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size)
+        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size)
+        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def predict_dataloader(self):
-        return DataLoader(self.predict, batch_size=self.batch_size)
+        return DataLoader(self.predict, batch_size=self.batch_size, num_workers=self.num_workers)
 
 
 
