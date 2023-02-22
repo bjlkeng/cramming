@@ -1,4 +1,5 @@
 import hydra
+import os
 from omegaconf import DictConfig, OmegaConf
 
 from baseline import run_baseline
@@ -8,7 +9,8 @@ from utils import dump_gpu_info
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg : DictConfig) -> None:
-    print(OmegaConf.to_yaml(cfg))
+    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+    print("Working directory : {}".format(hydra_cfg['runtime']['output_dir']))
 
     for task in cfg.tasks:
         print(task)

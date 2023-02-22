@@ -1,3 +1,5 @@
+import os
+import hydra
 import torch
 import pytorch_lightning as pl
 
@@ -10,6 +12,7 @@ from torchmetrics import Metric
 from torchmetrics.classification import BinaryAccuracy
 
 from dataloaders import CoLADataModule
+from utils import dump_glue_prediction, get_hydra_output_dir
 
 
 class EmbeddingClassifier(pl.LightningModule):
@@ -23,9 +26,15 @@ class EmbeddingClassifier(pl.LightningModule):
         self.learning_rate = learning_rate
 
         if n_classes == 2:
-            self.network = nn.Sequential(nn.Linear(embedding_width, 1), nn.Sigmoid())
+            self.network = nn.Sequential(nn.Linear(embedding_width, embedding_width), 
+                                         nn.ReLU(),
+                                         nn.Linear(embedding_width, 1), 
+                                         nn.Sigmoid())
         else:
-            self.network = nn.Sequential(nn.Linear(embedding_width, n_classes), nn.Softmax())
+            self.network = nn.Sequential(nn.Linear(embedding_width, embedding_width), 
+                                         nn.ReLU(),
+                                         nn.Linear(embedding_width, n_classes), 
+                                         nn.Softmax(n_classes))
 
     def forward(self, x):
         y = self.network(x)
@@ -54,11 +63,9 @@ def run_baseline(cfg):
 
     batch_size = 1000
     for task in cfg.tasks:
-        print(task)
-        print(cfg[task])
-        dm = globals()[cfg[task].datamodule](data_dir=cfg[task].data_dir, 
-                                             batch_size=batch_size,
-                                             sentence_encoder=sentence_encoder)
+        datamodule = globals()[cfg[task].datamodule](data_dir=cfg[task].data_dir,
+                                                     batch_size=batch_size,
+                                                     sentence_encoder=sentence_encoder)
 
         cls = EmbeddingClassifier(n_classes=cfg[task].n_classes, 
                                   embedding_width=cfg[task].embedding_width,
@@ -66,10 +73,18 @@ def run_baseline(cfg):
                                   metric=globals()[cfg[task].metric],
                                   learning_rate=cfg[task].learning_rate)
 
-        dm.setup(stage='fit')
-        dm.setup(stage='validate')
-        dm.setup(stage='test')
+        datamodule.setup(stage='fit')
+        datamodule.setup(stage='validate')
 
-        trainer = pl.Trainer(accelerator='gpu', devices=1, max_epochs=20)
-        trainer.fit(model=cls, datamodule=dm)
-        trainer.predict(model=cls, datamodule=dm)
+        trainer = pl.Trainer(accelerator='gpu', devices=1, max_epochs=5)
+        trainer.fit(model=cls, datamodule=datamodule)
+        
+        datamodule.setup(stage='test')
+        predictions = trainer.predict(model=cls, datamodule=datamodule)
+        predictions = torch.concat(predictions).flatten()
+        print(predictions)
+        ids = datamodule.predict.index
+
+        outpath = os.path.join(get_hydra_output_dir(), 'glue_outputs')
+        os.mkdir(outpath)
+        dump_glue_prediction(os.path.join(outpath, task + '.tsv'), ids, predictions)

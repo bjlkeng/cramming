@@ -27,7 +27,7 @@ class GlueDataset(Dataset):
             self.y_train = torch.tensor(df_glue.iloc[:, [target_index]].values, dtype=torch.float32)
 
         if index_index is not None:
-            self.index = torch.tensor(df_glue.iloc[:, [index_index]].values)
+            self.index = torch.tensor(df_glue.iloc[:, index_index].values)
 
         if sentence_encoder is not None:
             self.x_train = torch.tensor(sentence_encoder.encode(self.x_train))
@@ -68,7 +68,6 @@ class GlueBaseDataModule(pl.LightningDataModule):
 
     def predict_dataloader(self):
         return DataLoader(self.predict, batch_size=self.batch_size, num_workers=self.num_workers)
-
 
 
 class CoLADataModule(GlueBaseDataModule):
