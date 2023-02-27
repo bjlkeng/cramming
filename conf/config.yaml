@@ -5,40 +5,32 @@ baseline:
    batch_size: 32
    pretrained_model: bert-base-uncased
    seed: 42
+   max_epochs: 5
    tasks:
       - cola
-#      - sst2
-#      - mrpc
-#      - qqp
-#      - stsb
-#      - mnli
-#      - qnli
-#      - rte
-#      - ax
+      - sst2
+      - mrpc
+      - qqp
+      - stsb
+      - mnli
+      - qnli
+      - rte
+      - ax
    cola:
-      epochs: 3
       output_filename: CoLA.tsv
    sst2:
-      epochs: 1
       output_filename: SST-2.tsv
    mrpc:
-      epochs: 1
       output_filename: MRPC.tsv
    qqp:
-      epochs: 1
       output_filename: QQP.tsv
    stsb:
-      epochs: 1
       output_filename: STS-B.tsv
    mnli:
-      epochs: 1
       output_filename: MNLI-m.tsv
    qnli:
-      epochs: 1
       output_filename: QNLI.tsv
    rte:
-      epochs: 1
       output_filename: RTE.tsv
    ax:
-      epochs: 1
       output_filename: AX.tsv
