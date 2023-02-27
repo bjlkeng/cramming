@@ -7,16 +7,16 @@ baseline:
    seed: 42
    tasks:
       - cola
-      - sst2
-      - mrpc
-      - qqp
-      - stsb
-      - mnli
-      - qnli
-      - rte
-      - ax
+#      - sst2
+#      - mrpc
+#      - qqp
+#      - stsb
+#      - mnli
+#      - qnli
+#      - rte
+#      - ax
    cola:
-      epochs: 1
+      epochs: 3
       output_filename: CoLA.tsv
    sst2:
       epochs: 1

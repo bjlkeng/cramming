@@ -5,6 +5,8 @@ from typing import Optional
 import torch
 import datasets
 from pytorch_lightning import LightningModule, Trainer, seed_everything
+from pytorch_lightning.loggers import WandbLogger
+
 from transformers import (
     AdamW,
     AutoConfig,
@@ -121,6 +123,12 @@ class GLUETransformer(LightningModule):
 
 
 def run_baseline(cfg):
+    wandb_logger = WandbLogger(project='cramming',
+                               name='baseline',
+                               log_model=True,
+                               save_dir=get_hydra_output_dir())
+    wandb_logger.experiment.config.update(dict(cfg))    
+
     batch_size = cfg.batch_size
     model_name = cfg.pretrained_model
     seed = cfg.seed
@@ -143,10 +151,13 @@ def run_baseline(cfg):
             max_epochs=cfg[task].epochs,
             accelerator="auto",
             devices=1 if torch.cuda.is_available() else None,
+            default_root_dir=get_hydra_output_dir()
+            logger=wandb_logger,
         )
         trainer.fit(model, datamodule=dm)
 
-        predictions = trainer.predict(model, dm.test_dataloader())
+        predictions = trainer.predict(model, dm.test_dataloader(),
+                                      ckpt_path='best')
         predictions = torch.concat(predictions)
         predictions = predictions.detach().cpu().numpy()
 
