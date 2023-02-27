@@ -1,90 +1,159 @@
 import os
-import hydra
+from datetime import datetime
+from typing import Optional
+
 import torch
-import pytorch_lightning as pl
+import datasets
+from pytorch_lightning import LightningModule, Trainer, seed_everything
+from transformers import (
+    AdamW,
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    get_linear_schedule_with_warmup,
+)
 
-from typing import Callable
-
-from sentence_transformers import SentenceTransformer
-from torch import optim, nn
-from torch.nn.functional import binary_cross_entropy
-from torchmetrics import Metric
-from torchmetrics.classification import BinaryAccuracy
-
-from dataloaders import CoLADataModule
-from utils import dump_glue_prediction, get_hydra_output_dir
+from dataloaders import GLUEDataModule
+from utils import get_hydra_output_dir
 
 
-class EmbeddingClassifier(pl.LightningModule):
-    def __init__(self, n_classes: int, embedding_width:int, 
-                 loss_fn: Callable, metric: Metric,
-                 learning_rate: float):
+class GLUETransformer(LightningModule):
+    def __init__(
+        self,
+        model_name_or_path: str,
+        num_labels: int,
+        task_name: str,
+        learning_rate: float = 2e-5,
+        adam_epsilon: float = 1e-8,
+        warmup_steps: int = 0,
+        weight_decay: float = 0.0,
+        train_batch_size: int = 32,
+        eval_batch_size: int = 32,
+        eval_splits: Optional[list] = None,
+        **kwargs,
+    ):
         super().__init__()
 
-        self.loss_fn = loss_fn
-        self.metric = metric()
-        self.learning_rate = learning_rate
+        self.save_hyperparameters()
 
-        if n_classes == 2:
-            self.network = nn.Sequential(nn.Linear(embedding_width, embedding_width), 
-                                         nn.ReLU(),
-                                         nn.Linear(embedding_width, 1), 
-                                         nn.Sigmoid())
-        else:
-            self.network = nn.Sequential(nn.Linear(embedding_width, embedding_width), 
-                                         nn.ReLU(),
-                                         nn.Linear(embedding_width, n_classes), 
-                                         nn.Softmax(n_classes))
+        self.config = AutoConfig.from_pretrained(model_name_or_path, num_labels=num_labels)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, config=self.config)
+        self.metric = datasets.load_metric(
+            "glue", self.hparams.task_name, experiment_id=datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        )
 
-    def forward(self, x):
-        y = self.network(x)
-        return y
+    def forward(self, **inputs):
+        return self.model(**inputs)
 
     def training_step(self, batch, batch_idx):
-        x, targets = batch
-        y = self(x)
-        loss = self.loss_fn(y, targets)
+        outputs = self(**batch)
+        loss = outputs[0]
         return loss
-    
-    def validation_step(self, batch, batch_idx):
-        x, targets = batch
-        y = self(x)
-        val_loss = self.loss_fn(y, targets)
-        self.log("val_loss", val_loss)
-        self.log("test_accuracy", self.metric(y, targets))
+
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        outputs = self(**batch)
+        val_loss, logits = outputs[:2]
+
+        if self.hparams.num_labels > 1:
+            preds = torch.argmax(logits, axis=1)
+        elif self.hparams.num_labels == 1:
+            preds = logits.squeeze()
+
+        labels = batch["labels"]
+
+        return {"loss": val_loss, "preds": preds, "labels": labels}
+
+    def validation_epoch_end(self, outputs):
+        if self.hparams.task_name == "mnli":
+            for i, output in enumerate(outputs):
+                # matched or mismatched
+                split = self.hparams.eval_splits[i].split("_")[-1]
+                preds = torch.cat([x["preds"] for x in output]).detach().cpu().numpy()
+                labels = torch.cat([x["labels"] for x in output]).detach().cpu().numpy()
+                loss = torch.stack([x["loss"] for x in output]).mean()
+                self.log(f"val_loss_{split}", loss, prog_bar=True)
+                split_metrics = {
+                    f"{k}_{split}": v for k, v in self.metric.compute(predictions=preds, references=labels).items()
+                }
+                self.log_dict(split_metrics, prog_bar=True)
+            return loss
+
+        preds = torch.cat([x["preds"] for x in outputs]).detach().cpu().numpy()
+        labels = torch.cat([x["labels"] for x in outputs]).detach().cpu().numpy()
+        loss = torch.stack([x["loss"] for x in outputs]).mean()
+        self.log("val_loss", loss, prog_bar=True)
+        self.log_dict(self.metric.compute(predictions=preds, references=labels), prog_bar=True)
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        outputs = self(**batch)
+        val_loss, logits = outputs[:2]
+
+        if self.hparams.num_labels > 1:
+            preds = torch.argmax(logits, axis=1)
+        elif self.hparams.num_labels == 1:
+            preds = logits.squeeze()
+
+        return preds
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        """Prepare optimizer and schedule (linear warmup and decay)"""
+        model = self.model
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": self.hparams.weight_decay,
+            },
+            {
+                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
+
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.hparams.warmup_steps,
+            num_training_steps=self.trainer.estimated_stepping_batches,
+        )
+        scheduler = {"scheduler": scheduler, "interval": "step", "frequency": 1}
+        return [optimizer], [scheduler]
+
 
 
 def run_baseline(cfg):
-    sentence_encoder = SentenceTransformer('all-mpnet-base-v2')
-
-    batch_size = 1000
+    batch_size = cfg.batch_size
+    model_name = cfg.pretrained_model
+    seed = cfg.seed
+    
     for task in cfg.tasks:
-        datamodule = globals()[cfg[task].datamodule](data_dir=cfg[task].data_dir,
-                                                     batch_size=batch_size,
-                                                     sentence_encoder=sentence_encoder)
+        seed_everything(seed)
+        dm = GLUEDataModule(model_name_or_path=model_name, task_name=task, 
+                            train_batch_size=batch_size,
+                            eval_batch_size=batch_size)
 
-        cls = EmbeddingClassifier(n_classes=cfg[task].n_classes, 
-                                  embedding_width=cfg[task].embedding_width,
-                                  loss_fn=globals()[cfg[task].loss_fn],
-                                  metric=globals()[cfg[task].metric],
-                                  learning_rate=cfg[task].learning_rate)
+        dm.setup("fit")
+        model = GLUETransformer(
+            model_name_or_path=model_name,
+            num_labels=dm.num_labels,
+            eval_splits=dm.eval_splits,
+            task_name=dm.task_name,
+        )
 
-        datamodule.setup(stage='fit')
-        datamodule.setup(stage='validate')
+        trainer = Trainer(
+            max_epochs=cfg[task].epochs,
+            accelerator="auto",
+            devices=1 if torch.cuda.is_available() else None,
+        )
+        trainer.fit(model, datamodule=dm)
 
-        trainer = pl.Trainer(accelerator='gpu', devices=1, max_epochs=5)
-        trainer.fit(model=cls, datamodule=datamodule)
-        
-        datamodule.setup(stage='test')
-        predictions = trainer.predict(model=cls, datamodule=datamodule)
-        predictions = torch.concat(predictions).flatten()
-        print(predictions)
-        ids = datamodule.predict.index
+        predictions = trainer.predict(model, dm.test_dataloader())
+        predictions = torch.concat(predictions)
+        predictions = predictions.detach().cpu().numpy()
+
+        df_predictions = dm.dataset["test"].select_columns('idx').to_pandas()
+        df_predictions = df_predictions.rename(columns={'idx': 'id'})
+        df_predictions['label'] = predictions
 
         outpath = os.path.join(get_hydra_output_dir(), 'glue_outputs')
         os.mkdir(outpath)
-        dump_glue_prediction(os.path.join(outpath, task + '.tsv'), ids, predictions)
+        df_predictions.to_csv(os.path.join(outpath, cfg[task].output_filename), sep='\t', index=False)

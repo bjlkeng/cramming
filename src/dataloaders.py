@@ -1,120 +1,130 @@
-import os
-import torch
-
-import pandas as pd
-import pytorch_lightning as pl
-from torch.utils.data import random_split, DataLoader, Dataset
-from typing import Optional
+""" 
+    Slight modifications to GLUEDataModule from:
+    https://pytorch-lightning.readthedocs.io/en/stable/notebooks/lightning_examples/text-transformers.html 
+"""
 
 
-class GlueDataset(Dataset):
- 
-    def __init__(self, filename: str, target_index: int, 
-                 s1_index: int , s2_index: int,
-                 index_index: int = None,
-                 header: Optional[int] = None,
-                 sentence_encoder = None):
-        self.target_index = target_index
-        self.s1_index = s1_index
-        self.s2_index = s2_index
-        self.index_index = index_index
-
-        df_glue = pd.read_csv(filename, sep='\t', header=header)
-        col_indexes = [col for col in [s1_index, s2_index] if col is not None]
-        self.x_train = df_glue.iloc[:, col_indexes].values.flatten()
-
-        if target_index is not None:
-            self.y_train = torch.tensor(df_glue.iloc[:, [target_index]].values, dtype=torch.float32)
-
-        if index_index is not None:
-            self.index = torch.tensor(df_glue.iloc[:, index_index].values)
-
-        if sentence_encoder is not None:
-            self.x_train = torch.tensor(sentence_encoder.encode(self.x_train))
-        else:
-            assert "No conversion to tensor available"
- 
-    def __len__(self):
-        return len(self.x_train)
-    
-    def __getitem__(self, index):
-        if self.target_index is not None:
-            return self.x_train[index], self.y_train[index]
-        else:
-            return self.x_train[index]
+import datasets
+from torch.utils.data import DataLoader
+from pytorch_lightning import LightningDataModule
+from transformers import AutoTokenizer
 
 
+class GLUEDataModule(LightningDataModule):
+    task_text_field_map = {
+        "cola": ["sentence"],
+        "sst2": ["sentence"],
+        "mrpc": ["sentence1", "sentence2"],
+        "qqp": ["question1", "question2"],
+        "stsb": ["sentence1", "sentence2"],
+        "mnli": ["premise", "hypothesis"],
+        "qnli": ["question", "sentence"],
+        "rte": ["sentence1", "sentence2"],
+        "wnli": ["sentence1", "sentence2"],
+        "ax": ["premise", "hypothesis"],
+    }
 
-class GlueBaseDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str, batch_size: int = 32, sentence_encoder=None, 
-                 num_workers: int = 0):
+    glue_task_num_labels = {
+        "cola": 2,
+        "sst2": 2,
+        "mrpc": 2,
+        "qqp": 2,
+        "stsb": 1,
+        "mnli": 3,
+        "qnli": 2,
+        "rte": 2,
+        "wnli": 2,
+        "ax": 3,
+    }
+
+    loader_columns = [
+        "datasets_idx",
+        "input_ids",
+        "token_type_ids",
+        "attention_mask",
+        "start_positions",
+        "end_positions",
+        "labels",
+    ]
+
+    def __init__(
+        self,
+        model_name_or_path: str,
+        task_name: str = "mrpc",
+        max_seq_length: int = 128,
+        train_batch_size: int = 32,
+        eval_batch_size: int = 32,
+        **kwargs,
+    ):
         super().__init__()
-        self.data_dir = data_dir
-        self.batch_size = batch_size
-        self.sentence_encoder = sentence_encoder
-        self.num_workers = num_workers
+        self.model_name_or_path = model_name_or_path
+        self.task_name = task_name
+        self.max_seq_length = max_seq_length
+        self.train_batch_size = train_batch_size
+        self.eval_batch_size = eval_batch_size
+
+        self.text_fields = self.task_text_field_map[task_name]
+        self.num_labels = self.glue_task_num_labels[task_name]
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
+
+    def setup(self, stage: str):
+        self.dataset = datasets.load_dataset("glue", self.task_name)
+
+        for split in self.dataset.keys():
+            self.dataset[split] = self.dataset[split].map(
+                self.convert_to_features,
+                batched=True,
+                remove_columns=["label"],
+            )
+            self.columns = [c for c in self.dataset[split].column_names if c in self.loader_columns]
+            self.dataset[split].set_format(type="torch", columns=self.columns)
+
+            # BK: Reset test labels to 0's so the model won't throw an error
+            def zero_labels(row):
+                row['labels'] = max(0, row['labels'])
+                return row
+
+            if split == 'test':
+                self.dataset[split] = self.dataset[split].map(zero_labels)
+
+        self.eval_splits = [x for x in self.dataset.keys() if "validation" in x]
 
     def prepare_data(self):
-        pass
-
-    def setup(self, stage: str):
-        raise NotImplementedError()
+        datasets.load_dataset("glue", self.task_name)
+        AutoTokenizer.from_pretrained(self.model_name_or_path, use_fast=True)
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.dataset["train"], batch_size=self.train_batch_size, shuffle=True)
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size, num_workers=self.num_workers)
+        if len(self.eval_splits) == 1:
+            return DataLoader(self.dataset["validation"], batch_size=self.eval_batch_size)
+        elif len(self.eval_splits) > 1:
+            return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
 
-    def predict_dataloader(self):
-        return DataLoader(self.predict, batch_size=self.batch_size, num_workers=self.num_workers)
+    def test_dataloader(self):
+        if len(self.eval_splits) == 1:
+            return DataLoader(self.dataset["test"], batch_size=self.eval_batch_size)
+        elif len(self.eval_splits) > 1:
+            return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
 
+    def convert_to_features(self, example_batch, indices=None):
+        # Either encode single sentence or sentence pairs
+        if len(self.text_fields) > 1:
+            texts_or_text_pairs = list(zip(example_batch[self.text_fields[0]], example_batch[self.text_fields[1]]))
+        else:
+            texts_or_text_pairs = example_batch[self.text_fields[0]]
 
-class CoLADataModule(GlueBaseDataModule):
-    def setup(self, stage: str):
-        # Assign train/val datasets for use in dataloaders
-        if stage == 'fit':
-            self.train = GlueDataset(filename=os.path.join(self.data_dir, 'train.tsv'),
-                                     target_index=1, s1_index=3, s2_index=None,
-                                     sentence_encoder=self.sentence_encoder)
-            
-        if stage == 'validate':
-            self.val = GlueDataset(filename=os.path.join(self.data_dir, 'dev.tsv'),
-                                   target_index=1, s1_index=3, s2_index=None,
-                                   sentence_encoder=self.sentence_encoder)
+        # Tokenize the text/text pairs
+        features = self.tokenizer.batch_encode_plus(
+            texts_or_text_pairs, max_length=self.max_seq_length, pad_to_max_length=True, truncation=True
+        )
 
-        # Assign test dataset for use in dataloader(s)
-        if stage == 'predict':
-            self.predict = GlueDataset(filename=os.path.join(self.data_dir, 'test.tsv'),
-                                       target_index=None, s1_index=1, s2_index=None, index_index=0,
-                                       header=0, sentence_encoder=self.sentence_encoder)
+        # Rename label to labels to make it easier to pass to model forward
+        features["labels"] = example_batch["label"]
+
+        return features
 
 
 def test():
-    data_modules = [CoLADataModule(data_dir='./glue_data/CoLA/')]
-
-    for dm in data_modules:
-        for stage in ['fit', 'validate', 'predict']:
-            dm.setup(stage=stage)
-
-            if stage == 'fit':
-                dataset = dm.train
-            elif stage == 'validate':
-                dataset = dm.val
-            elif stage == 'test':
-                dataset = dm.test
-            elif stage == 'predict':
-                dataset = dm.predict
-            else:
-                assert False, stage
-
-            print('======================================')
-            print(stage)
-            for i, row in enumerate(dataset):
-                if len(row) == 2:
-                    x, y = row
-                    if i < 10:
-                        print(f'{i}: x = {x}, y = {y}')
-                else:
-                    x = row
-                    print(f'{i}: x = {x}')
+    pass

@@ -2,14 +2,43 @@ tasks:
     - baseline
 
 baseline:
+   batch_size: 32
+   pretrained_model: bert-base-uncased
+   seed: 42
    tasks:
-      - CoLA
-
-   CoLA:
-      n_classes: 2
-      embedding_width: 768
-      datamodule: CoLADataModule 
-      data_dir: './glue_data/CoLA/'
-      loss_fn: binary_cross_entropy
-      metric: BinaryAccuracy
-      learning_rate: 1e-3
+      - cola
+      - sst2
+      - mrpc
+      - qqp
+      - stsb
+      - mnli
+      - qnli
+      - rte
+      - ax
+   cola:
+      epochs: 1
+      output_filename: CoLA.tsv
+   sst2:
+      epochs: 1
+      output_filename: SST-2.tsv
+   mrpc:
+      epochs: 1
+      output_filename: MRPC.tsv
+   qqp:
+      epochs: 1
+      output_filename: QQP.tsv
+   stsb:
+      epochs: 1
+      output_filename: STS-B.tsv
+   mnli:
+      epochs: 1
+      output_filename: MNLI-m.tsv
+   qnli:
+      epochs: 1
+      output_filename: QNLI.tsv
+   rte:
+      epochs: 1
+      output_filename: RTE.tsv
+   ax:
+      epochs: 1
+      output_filename: AX.tsv

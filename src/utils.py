@@ -18,14 +18,6 @@ def dump_gpu_info():
     print(f'Device name: {device_name}')
 
 
-def dump_glue_prediction(outfile: str, ids: torch.Tensor, predictions: torch.Tensor):
-    ids = ids.detach().cpu().numpy()
-    predictions = predictions.detach().cpu().numpy()
-
-    df = pd.DataFrame({'id': ids, 'label': predictions})
-    df.to_csv(outfile, index=False, sep='\t')
-
-
 def get_hydra_output_dir() -> str:
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     return hydra_cfg['runtime']['output_dir']
