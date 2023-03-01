@@ -88,6 +88,9 @@ class GLUEDataModule(LightningDataModule):
                 self.dataset[split] = self.dataset[split].map(zero_labels)
 
         self.eval_splits = [x for x in self.dataset.keys() if "validation" in x]
+        self.out_suffix = (['_' + x.split('_')[-1] + '.tsv' for x in self.eval_splits] 
+                            if len(self.eval_splits) > 1 
+                            else ['.tsv'])
 
     def prepare_data(self):
         datasets.load_dataset("glue", self.task_name)

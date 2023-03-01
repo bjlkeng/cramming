@@ -7,30 +7,35 @@ baseline:
    seed: 42
    max_epochs: 5
    tasks:
+      - mnli
       - cola
       - sst2
       - mrpc
       - qqp
       - stsb
-      - mnli
       - qnli
       - rte
-      - ax
    cola:
-      output_filename: CoLA.tsv
+      output_prefix: CoLA
+      metric_name: matthews_correlation
    sst2:
-      output_filename: SST-2.tsv
+      output_prefix: SST-2
+      metric_name: accuracy
    mrpc:
-      output_filename: MRPC.tsv
+      output_prefix: MRPC
+      metric_name: accuracy
    qqp:
-      output_filename: QQP.tsv
+      output_prefix: QQP
+      metric_name: accuracy
    stsb:
-      output_filename: STS-B.tsv
+      output_prefix: STS-B
+      metric_name: pearson
    mnli:
-      output_filename: MNLI-m.tsv
+      output_prefix: MNLI
+      metric_name: accuracy
    qnli:
-      output_filename: QNLI.tsv
+      output_prefix: QNLI
+      metric_name: accuracy
    rte:
-      output_filename: RTE.tsv
-   ax:
-      output_filename: AX.tsv
+      output_prefix: RTE
+      metric_name: accuracy

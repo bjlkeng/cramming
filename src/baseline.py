@@ -1,5 +1,5 @@
-import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -148,8 +148,9 @@ def run_baseline(cfg):
             eval_splits=dm.eval_splits,
             task_name=dm.task_name,
         )
-        
-        checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor='val_loss')
+
+        # BK: Using val_loss to pick best model for simplicity here
+        checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor=cfg[task].metric_name)
         trainer = Trainer(
             max_epochs=cfg.max_epochs,
             accelerator='auto',
@@ -160,15 +161,20 @@ def run_baseline(cfg):
         )
         trainer.fit(model, datamodule=dm)
 
-        predictions = trainer.predict(model, dm.test_dataloader(), 
-                                      ckpt_path='best')
-        predictions = torch.concat(predictions)
-        predictions = predictions.detach().cpu().numpy()
+        test_loaders = dm.test_dataloader()
+        if type(test_loaders) is not list:
+            test_loaders = [test_loaders]
 
-        df_predictions = dm.dataset['test'].select_columns('idx').to_pandas()
-        df_predictions = df_predictions.rename(columns={'idx': 'id'})
-        df_predictions['label'] = predictions
+        for i, loader in enumerate(test_loaders):
+            predictions = trainer.predict(model, loader, ckpt_path='best')
+            predictions = torch.concat(predictions)
+            predictions = predictions.detach().cpu().numpy()
 
-        outpath = os.path.join(get_hydra_output_dir(), 'glue_outputs')
-        os.mkdir(outpath)
-        df_predictions.to_csv(os.path.join(outpath, cfg[task].output_filename), sep='\t', index=False)
+            df_predictions = dm.dataset['test' + dm.eval_suffix[i]].select_columns('idx').to_pandas()
+            df_predictions = df_predictions.rename(columns={'idx': 'id'})
+            df_predictions['label'] = predictions
+
+            outpath = Path(get_hydra_output_dir()) / 'glue_outputs'
+            outpath.mkdir(exist_ok=True)
+            outpath = outpath / (cfg[task].output_prefix + dm.eval_suffix[i])
+            df_predictions.to_csv(outpath, sep='\t', index=False)
