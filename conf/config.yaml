@@ -32,7 +32,7 @@ baseline:
       metric_name: pearson
    mnli:
       output_prefix: MNLI
-      metric_name: accuracy
+      metric_name: accuracy_matched
    qnli:
       output_prefix: QNLI
       metric_name: accuracy

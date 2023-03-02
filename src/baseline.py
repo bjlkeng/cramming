@@ -170,11 +170,11 @@ def run_baseline(cfg):
             predictions = torch.concat(predictions)
             predictions = predictions.detach().cpu().numpy()
 
-            df_predictions = dm.dataset['test' + dm.eval_suffix[i]].select_columns('idx').to_pandas()
+            df_predictions = dm.dataset['test' + dm.out_suffix[i]].select_columns('idx').to_pandas()
             df_predictions = df_predictions.rename(columns={'idx': 'id'})
             df_predictions['label'] = predictions
 
             outpath = Path(get_hydra_output_dir()) / 'glue_outputs'
             outpath.mkdir(exist_ok=True)
-            outpath = outpath / (cfg[task].output_prefix + dm.eval_suffix[i])
+            outpath = outpath / (cfg[task].output_prefix + dm.out_suffix[i] + '.tsv')
             df_predictions.to_csv(outpath, sep='\t', index=False)
