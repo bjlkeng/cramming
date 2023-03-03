@@ -54,6 +54,7 @@ class GLUEDataModule(LightningDataModule):
         max_seq_length: int = 128,
         train_batch_size: int = 32,
         eval_batch_size: int = 32,
+        test_batch_size: int = 32,
         **kwargs,
     ):
         super().__init__()
@@ -62,6 +63,7 @@ class GLUEDataModule(LightningDataModule):
         self.max_seq_length = max_seq_length
         self.train_batch_size = train_batch_size
         self.eval_batch_size = eval_batch_size
+        self.test_batch_size = test_batch_size
 
         self.text_fields = self.task_text_field_map[task_name]
         self.num_labels = self.glue_task_num_labels[task_name]
@@ -84,13 +86,11 @@ class GLUEDataModule(LightningDataModule):
                 row['labels'] = max(0, row['labels'])
                 return row
 
-            if split == 'test':
+            if 'test' in split:
                 self.dataset[split] = self.dataset[split].map(zero_labels)
 
         self.eval_splits = [x for x in self.dataset.keys() if "validation" in x]
-        self.out_suffix = (['_' + x.split('_')[-1] for x in self.eval_splits] 
-                            if len(self.eval_splits) > 1 
-                            else [''])
+        self.test_splits = [x for x in self.dataset.keys() if "test" in x]
 
     def prepare_data(self):
         datasets.load_dataset("glue", self.task_name)
@@ -106,10 +106,10 @@ class GLUEDataModule(LightningDataModule):
             return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
 
     def test_dataloader(self):
-        if len(self.eval_splits) == 1:
+        if len(self.test_splits) == 1:
             return DataLoader(self.dataset["test"], batch_size=self.eval_batch_size)
-        elif len(self.eval_splits) > 1:
-            return [DataLoader(self.dataset[x], batch_size=self.eval_batch_size) for x in self.eval_splits]
+        elif len(self.test_splits) > 1:
+            return [DataLoader(self.dataset[x], batch_size=self.test_batch_size) for x in self.test_splits]
 
     def convert_to_features(self, example_batch, indices=None):
         # Either encode single sentence or sentence pairs
