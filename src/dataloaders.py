@@ -72,7 +72,8 @@ class GLUEDataModule(LightningDataModule):
     def setup(self, stage: str):
         self.dataset = datasets.load_dataset("glue", self.task_name)
 
-        for split in self.dataset.keys():
+        sorted_keys = sorted(self.dataset.keys())
+        for split in sorted_keys:
             self.dataset[split] = self.dataset[split].map(
                 self.convert_to_features,
                 batched=True,
@@ -81,6 +82,10 @@ class GLUEDataModule(LightningDataModule):
             self.columns = [c for c in self.dataset[split].column_names if c in self.loader_columns]
             self.dataset[split].set_format(type="torch", columns=self.columns)
 
+            # TODO: REMOVE ME
+            if split == 'train':
+                self.dataset[split] = self.dataset[split].filter(lambda x, idx: idx < 128, with_indices=True)
+
             # BK: Reset test labels to 0's so the model won't throw an error
             def zero_labels(row):
                 row['labels'] = max(0, row['labels'])
@@ -88,9 +93,10 @@ class GLUEDataModule(LightningDataModule):
 
             if 'test' in split:
                 self.dataset[split] = self.dataset[split].map(zero_labels)
+                self.test_labels = self.dataset['train'].features['label']
 
-        self.eval_splits = [x for x in self.dataset.keys() if "validation" in x]
-        self.test_splits = [x for x in self.dataset.keys() if "test" in x]
+        self.eval_splits = [x for x in sorted_keys if "validation" in x]
+        self.test_splits = [x for x in sorted_keys if "test" in x]
 
     def prepare_data(self):
         datasets.load_dataset("glue", self.task_name)

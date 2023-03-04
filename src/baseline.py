@@ -4,6 +4,7 @@ from typing import Optional
 
 import torch
 import datasets
+from omegaconf import ListConfig
 from pytorch_lightning import LightningModule, Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -174,8 +175,10 @@ def run_baseline(cfg):
             df_predictions = df_predictions.rename(columns={'idx': 'id'})
             df_predictions['label'] = predictions
 
-            out_suffix = dm.test_splits[i].split('_')[-1] if len(dm.test_splits) > 1 else ''
+            filename = [cfg[task].outfile] if not isinstance(cfg[task].outfile, ListConfig) else cfg[task].outfile
             outpath = Path(get_hydra_output_dir()) / 'glue_outputs'
             outpath.mkdir(exist_ok=True)
-            outpath = outpath / (cfg[task].output_prefix + out_suffix + '.tsv')
+            outpath = outpath / filename[i]
             df_predictions.to_csv(outpath, sep='\t', index=False)
+
+        wandb_logger.finalize('success')
