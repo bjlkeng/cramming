@@ -37,6 +37,19 @@ class GLUEDataModule(LightningDataModule):
         "ax": 3,
     }
 
+    glue_task_str_output = {
+        "cola": False,
+        "sst2": False,
+        "mrpc": False,
+        "qqp": False,
+        "stsb": False,
+        "mnli": True,
+        "qnli": True,
+        "rte": True,
+        "wnli": False,
+        "ax": True,
+    }
+
     loader_columns = [
         "datasets_idx",
         "input_ids",
@@ -71,9 +84,11 @@ class GLUEDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         self.dataset = datasets.load_dataset("glue", self.task_name)
+        self.label_mapping = {}
 
         sorted_keys = sorted(self.dataset.keys())
         for split in sorted_keys:
+            self.label_mapping[split] = self.dataset[split].features['label']
             self.dataset[split] = self.dataset[split].map(
                 self.convert_to_features,
                 batched=True,
@@ -83,8 +98,8 @@ class GLUEDataModule(LightningDataModule):
             self.dataset[split].set_format(type="torch", columns=self.columns)
 
             # TODO: REMOVE ME
-            if split == 'train':
-                self.dataset[split] = self.dataset[split].filter(lambda x, idx: idx < 128, with_indices=True)
+            #if split == 'train':
+            #    self.dataset[split] = self.dataset[split].filter(lambda x, idx: idx < 128, with_indices=True)
 
             # BK: Reset test labels to 0's so the model won't throw an error
             def zero_labels(row):

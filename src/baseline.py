@@ -123,7 +123,6 @@ class GLUETransformer(LightningModule):
         return [optimizer], [scheduler]
 
 
-
 def run_baseline(cfg):
 
     batch_size = cfg.batch_size
@@ -173,7 +172,9 @@ def run_baseline(cfg):
 
             df_predictions = dm.dataset[dm.test_splits[i]].select_columns('idx').to_pandas()
             df_predictions = df_predictions.rename(columns={'idx': 'id'})
-            df_predictions['label'] = predictions
+            df_predictions['prediction'] = predictions
+            if dm.glue_task_str_output[task]:
+                df_predictions['prediction'] = df_predictions['prediction'].apply(dm.label_mapping[dm.test_splits[i]].int2str)
 
             filename = [cfg[task].outfile] if not isinstance(cfg[task].outfile, ListConfig) else cfg[task].outfile
             outpath = Path(get_hydra_output_dir()) / 'glue_outputs'
