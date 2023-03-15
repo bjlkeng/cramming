@@ -182,4 +182,4 @@ def run_baseline(cfg):
             outpath = outpath / filename[i]
             df_predictions.to_csv(outpath, sep='\t', index=False)
 
-        wandb_logger.finalize('success')
+        wandb_logger.experiment.finish()
