@@ -3,7 +3,7 @@ tasks:
 
 baseline:
    batch_size: 32
-   pretrained_model: bert-base-uncased
+   pretrained_model: bert-large-uncased
    seed: 42
    max_epochs: 5
    tasks:

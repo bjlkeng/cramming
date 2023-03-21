@@ -141,7 +141,7 @@ class GLUEDataModule(LightningDataModule):
 
         # Tokenize the text/text pairs
         features = self.tokenizer.batch_encode_plus(
-            texts_or_text_pairs, max_length=self.max_seq_length, pad_to_max_length=True, truncation=True
+            texts_or_text_pairs, max_length=self.max_seq_length, padding='max_length', truncation=True
         )
 
         # Rename label to labels to make it easier to pass to model forward
