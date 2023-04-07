@@ -165,8 +165,8 @@ class BertDataModule(LightningDataModule):
     def prepare_data(self):
         # called only on 1 GPU
 
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return super().train_dataloader()
+    def train_dataloader(self):
+        return DataLoader(self.dataset["train"], batch_size=self.train_batch_size, shuffle=True)
     
     def convert_to_features(self, example_batch, indices=None):
         # Either encode single sentence or sentence pairs
