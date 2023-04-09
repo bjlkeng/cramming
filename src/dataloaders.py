@@ -7,7 +7,8 @@
 import datasets
 from torch.utils.data import DataLoader
 from pytorch_lightning import LightningDataModule
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, DataCollatorForLanguageModeling
+
 
 
 class GLUEDataModule(LightningDataModule):
@@ -148,42 +149,65 @@ class GLUEDataModule(LightningDataModule):
         features["labels"] = example_batch["label"]
 
         return features
-    
+
 
 class BertDataModule(LightningDataModule):
+    loader_columns = [
+        "input_ids",
+        "attention_mask",
+        # Labels added in `DataCollatorForLanguageModeling`
+    ]
+
     def __init__(self, 
+                 source_files: list[str],
                  tokenizer_name: str,
                  max_seq_length: int = 128,
                  train_batch_size: int = 32,
+                 mlm_probability: float = 0.15,
                  **kwargs):
         super().__init__()
 
+        self.source_files = source_files
         self.max_seq_length = max_seq_length
         self.train_batch_size = train_batch_size
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+        self.mlm_probability = mlm_probability
 
     def prepare_data(self):
-        # called only on 1 GPU
+        pass
+
+    def setup(self, stage: str) -> None:
+        dataset = datasets.load_dataset('text', data_files=self.source_files, sample_by='document', 
+                                        split='train', streaming=True)
+        
+        self.train_dataset = (dataset.map(self.tokenize, batched=True, remove_columns=['text'], batch_size=1))
+                              #       .map(self.batch_examples, batched=True, batch_size=10))
 
     def train_dataloader(self):
-        return DataLoader(self.dataset["train"], batch_size=self.train_batch_size, shuffle=True)
+        return DataLoader(self.train_dataset, 
+                          collate_fn=DataCollatorForLanguageModeling(self.tokenizer,
+                                                                     mlm=True,
+                                                                     mlm_probability=self.mlm_probability,),
+                          batch_size=self.train_batch_size,)
     
-    def convert_to_features(self, example_batch, indices=None):
-        # Either encode single sentence or sentence pairs
-        if len(self.text_fields) > 1:
-            texts_or_text_pairs = list(zip(example_batch[self.text_fields[0]], example_batch[self.text_fields[1]]))
-        else:
-            texts_or_text_pairs = example_batch[self.text_fields[0]]
+    def tokenize(self, examples):
+        input_ids = []
+        attention_masks = []
+        for example in examples['text']:
+            tokens = self.tokenizer(example,
+                                    add_special_tokens=True,
+                                    padding='max_length',
+                                    truncation=True,
+                                    max_length=self.max_seq_length,
+                                    return_token_type_ids=False,
+                                    return_overflowing_tokens=True,)
+            input_ids += tokens['input_ids']
+            attention_masks += tokens['attention_mask']
+        return {'input_ids': input_ids, 'attention_mask': attention_masks}
 
-        # Tokenize the text/text pairs
-        features = self.tokenizer.batch_encode_plus(
-            texts_or_text_pairs, max_length=self.max_seq_length, padding='max_length', truncation=True
-        )
-
-        # Rename label to labels to make it easier to pass to model forward
-        features["labels"] = example_batch["label"]
-
-        return features
+    def batch_examples(self, examples):
+        return {'input_ids': [examples['input_ids']],
+                'attention_mask': [examples['attention_mask']]}
 
 
 def test():
