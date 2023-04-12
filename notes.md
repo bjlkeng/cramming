@@ -1,5 +1,19 @@
 # 2023-04-10
 
+* Cleaned up the code: made a `VanillaBert()` version so I can do a baseline test
+* Took some code from Pytorch tutorial for positional encodings
+* Next:
+    * Add in AdamW (figure out how the L2 decay works), 
+    * Implement a warmup: https://stackoverflow.com/questions/55933867/what-does-learning-rate-warm-up-mean
+* BERT paper:
+> We use Adam with learning rate of 1e-4, β1 = 0.9, β2 = 0.999, L2 weight
+> decay of 0.01, learning rate warmup over the first 10,000 steps, and linear
+> decay of the learning rate. We use a dropout prob- ability of 0.1 on all
+> layers. We use a gelu acti- vation (Hendrycks and Gimpel, 2016) rather than
+> the standard relu, following OpenAI GPT.
+
+# 2023-04-10
+
 * Got a transformer block working (courtesy of ChatGPT)
     * Tried to get ChatGPT to write me a test harness for the TransformerBlock and it hallucinated some datasets in Torch as well as some variables.  Didn't try to hard to get the prompt right, just decided to write my own.
     * I tried to ask it questions about the Pytorch/Lightning API, and it was semi-helpful.  What's the most helpful is if I can find the actual documentation, but it requires a few more clicks via Google/PyTorch docs

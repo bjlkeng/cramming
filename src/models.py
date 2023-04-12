@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,3 +73,62 @@ class TransformerBlock(nn.Module):
         x = self.ff_layer_norm(x)
         
         return x
+
+
+class PositionalEncoding(nn.Module):
+    ''' Taken from the Pytorch tutorial:
+        https://pytorch.org/tutorials/beginner/transformer_tutorial.html '''
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 128):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+
+class TransformerModule(nn.Module):
+    def __init__(self, vocab_size: int, n_blocks: int, d_model: int, 
+                 n_heads: int , d_ff: int , dropout: float = 0.1, max_len: int = 128):
+        super().__init__()
+        self.embeddings = nn.Embedding(vocab_size, d_model)
+        self.pos_encoding = PositionalEncoding(d_model, dropout=dropout, max_len=max_len)
+        self.layer_norm = nn.LayerNorm(d_model)
+        self.transformer_blocks = nn.Sequential(
+            *[TransformerBlock(d_model, n_heads, d_ff, dropout=dropout) for _ in range(n_blocks)]
+        )
+        self.fc = nn.Linear(d_model, 1)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, text):
+        embedded_text = self.embeddings(text)
+        embedded_text = self.pos_encoding(embedded_text)
+        transformer_output = self.transformer_blocks(embedded_text)
+        pooled_output = transformer_output.mean(axis=1)
+        logits = self.fc(pooled_output)
+        return logits.squeeze(-1)
+
+
+def VanillaBert(vocab_size, **kwargs):
+    ''' Default parameters for the vanilla BERT '''
+    params = {
+        'n_blocks': 12, 
+        'd_model': 768, 
+        'n_heads': 12, 
+        'd_ff': 768*4,
+        'dropout': 0.1,
+        'max_len': 128,
+    }
+    params.update(kwargs)
+    return TransformerModule(vocab_size=vocab_size, **params)
