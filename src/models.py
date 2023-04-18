@@ -126,7 +126,7 @@ def VanillaBert(vocab_size, **kwargs):
         'n_blocks': 12, 
         'd_model': 768, 
         'n_heads': 12, 
-        'd_ff': 768*4,
+        'd_ff': 768 * 4,
         'dropout': 0.1,
         'max_len': 128,
     }

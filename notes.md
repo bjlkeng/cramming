@@ -1,3 +1,10 @@
+# 2023-04-17
+
+* Implemented AdamW (after reading the original paper to get the intuition behind it)
+* Next:
+    * Implement a warmup: https://stackoverflow.com/questions/55933867/what-does-learning-rate-warm-up-mean
+    * Not clear how they decay learning rate in BERT paper, original transformer paper used inverse square root steps
+
 # 2023-04-10
 
 * Cleaned up the code: made a `VanillaBert()` version so I can do a baseline test
